@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="DocstreamAISearch.ApiService/DocstreamAISearch.ApiService.csproj" />
+  <Project Path="DocstreamAISearch.AppHost/DocstreamAISearch.AppHost.csproj" />
+  <Project Path="DocstreamAISearch.ServiceDefaults/DocstreamAISearch.ServiceDefaults.csproj" />
+  <Project Path="DocstreamAISearch.Web/DocstreamAISearch.Web.csproj" />
+  <Project Path="DTO/DTO.csproj" />
+</Solution>
