@@ -41,15 +41,20 @@ public class FileManager : IFileManager
 
     public async Task<PagingHeader?> ListUploadedFilesAsync(PagingParams pagingParams)
     {
-        IQueryable<UploadFile> files = null;
+        IQueryable<UploadFile> files;
+        
         if (pagingParams.SearchByIA)
         {
+            if (string.IsNullOrEmpty(pagingParams.SearchParams))
+            {
+                return null; // No search params provided
+            }
             var fileIds = await vectorManager.SearchAsync(pagingParams.SearchParams, pagingParams.PageSize);
             files = GetUploadFiles(fileIds);
         }
         else
         {
-           files = _context.UploadFiles.Where(f => EF.Functions.Like(f.Name, $"%{pagingParams.SearchParams}%"));
+           files = _context.UploadFiles.Where(f => string.IsNullOrEmpty(pagingParams.SearchParams) || EF.Functions.Like(f.Name, $"%{pagingParams.SearchParams}%"));
         }
 
         var result = new PagedList<UploadFile>(files.AsQueryable(), pagingParams.PageNumber, pagingParams.PageSize);
@@ -70,19 +75,28 @@ public class FileManager : IFileManager
     public async Task<bool> UploadFileAsync(UploadRequestDTO request)
     {
         var (filePath, stream) = SaveFileToRoot(request.File);
-        var file = new UploadFile
+        
+        try
         {
-            Name = request.FileName,
-            Size = request.FileSize,
-            FilePath = filePath,
-            UploadDate = DateTime.UtcNow
-        };
+            var file = new UploadFile
+            {
+                Name = request.FileName,
+                Size = request.FileSize,
+                FilePath = filePath,
+                UploadDate = DateTime.UtcNow
+            };
 
-        _context.UploadFiles.Add(file);
-        await _context.SaveChangesAsync();
+            _context.UploadFiles.Add(file);
+            await _context.SaveChangesAsync();
 
-        await vectorManager.ImportAsync(stream, request.FileName, request.File.ContentType, file.Id);
-        return true;
+            await vectorManager.ImportAsync(stream, request.FileName, request.File.ContentType, file.Id);
+            return true;
+        }
+        finally
+        {
+            // Ensure the stream is disposed
+            stream?.Dispose();
+        }
     }
 
 
@@ -95,10 +109,17 @@ public class FileManager : IFileManager
         }
 
         var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", file.FileName);
-        using var stream = new FileStream(filePath, FileMode.Create);
-        file.CopyTo(stream);
-
-        return ($"/uploads/{file.FileName}", stream);
+        
+        // Save the file first
+        using (var writeStream = new FileStream(filePath, FileMode.Create))
+        {
+            file.CopyTo(writeStream);
+        }
+        
+        // Then create a new stream for reading
+        var readStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+        
+        return ($"/uploads/{file.FileName}", readStream);
     }
     
     private IQueryable<UploadFile> GetUploadFiles(List<int> fileIds)

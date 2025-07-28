@@ -14,7 +14,15 @@
             <h2 class="fw-bold text-dark mb-0">Archive</h2>
         </div>
         <div class="col-md-6">
-            <div class="d-flex gap-2 justify-content-end">
+            <div class="d-flex gap-2 justify-content-end align-items-center">
+                <!-- Search with AI Checkbox -->
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" @bind="searchWithAI" @bind:after="OnSearchModeChanged" id="searchWithAI">
+                    <label class="form-check-label" for="searchWithAI">
+                        Search with AI
+                    </label>
+                </div>
+                
                 <!-- Search Input -->
                 <div class="input-group" style="max-width: 300px;">
                     <input type="text" class="form-control" placeholder="Search" @bind="searchQuery" @onkeypress="OnSearchKeyPress">
@@ -105,6 +113,46 @@
                             </table>
                         </div>
                     </div>
+                    
+                    <!-- Pagination Controls -->
+                    @if (currentPagingHeader != null && currentPagingHeader.TotalPages > 1)
+                    {
+                        <div class="card-footer">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="text-muted">
+                                    Showing @((currentPagingHeader.PageNumber - 1) * currentPagingHeader.PageSize + 1) to 
+                                    @Math.Min(currentPagingHeader.PageNumber * currentPagingHeader.PageSize, currentPagingHeader.TotalItems) 
+                                    of @currentPagingHeader.TotalItems files
+                                </div>
+                                <nav aria-label="File pagination">
+                                    <ul class="pagination pagination-sm mb-0">
+                                        <!-- Previous Button -->
+                                        <li class="page-item @(currentPagingHeader.PageNumber <= 1 ? "disabled" : "")">
+                                            <button class="page-link" @onclick="() => GoToPage(currentPagingHeader.PreviousPage)" disabled="@(currentPagingHeader.PageNumber <= 1)">
+                                                Previous
+                                            </button>
+                                        </li>
+                                        
+                                        <!-- Page Numbers -->
+                                        @for (int i = Math.Max(1, currentPagingHeader.PageNumber - 2); i <= Math.Min(currentPagingHeader.TotalPages, currentPagingHeader.PageNumber + 2); i++)
+                                        {
+                                            var pageNum = i;
+                                            <li class="page-item @(pageNum == currentPagingHeader.PageNumber ? "active" : "")">
+                                                <button class="page-link" @onclick="() => GoToPage(pageNum)">@pageNum</button>
+                                            </li>
+                                        }
+                                        
+                                        <!-- Next Button -->
+                                        <li class="page-item @(currentPagingHeader.PageNumber >= currentPagingHeader.TotalPages ? "disabled" : "")">
+                                            <button class="page-link" @onclick="() => GoToPage(currentPagingHeader.NextPage)" disabled="@(currentPagingHeader.PageNumber >= currentPagingHeader.TotalPages)">
+                                                Next
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            </div>
+                        </div>
+                    }
                 </div>
             </div>
         </div>
@@ -133,11 +181,16 @@
     private List<UploadResponseDTO> files = new();
     private List<UploadResponseDTO> filteredFiles = new();
     private string searchQuery = string.Empty;
+    private bool searchWithAI = false;
     private bool isLoading = true;
     private bool isUploading = false;
     private string uploadingFileName = string.Empty;
     private InputFile? fileInput;
     private HashSet<int> selectedFiles = new();
+    
+    // Pagination properties
+    private PagingParams pagingParams = new() { PageNumber = 1, PageSize = 10 };
+    private PagingHeader? currentPagingHeader;
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,14 +202,30 @@
         isLoading = true;
         try
         {
-            var response = await UploadService.ListUploadedFilesAsync();
-            files = response?.UploadedFiles ?? new List<UploadResponseDTO>();
-            ApplySearch();
+            // Update paging params with current search settings
+            pagingParams.SearchParams = searchQuery;
+            pagingParams.SearchByIA = searchWithAI;
+            
+            var response = await UploadService.ListUploadedFilesAsync(pagingParams);
+            currentPagingHeader = response;
+            
+            // The Result property contains the actual files list
+            if (response?.Result is List<UploadResponseDTO> filesList)
+            {
+                files = filesList;
+                filteredFiles = files.ToList(); // With pagination, we don't need local filtering
+            }
+            else
+            {
+                files = new List<UploadResponseDTO>();
+                filteredFiles = new List<UploadResponseDTO>();
+            }
         }
         catch (Exception)
         {
             // Handle error - could show a toast notification
             files = new List<UploadResponseDTO>();
+            filteredFiles = new List<UploadResponseDTO>();
         }
         finally
         {
@@ -165,31 +234,41 @@
         }
     }
 
-    private void ApplySearch()
+    private async Task ApplySearch()
     {
-        if (string.IsNullOrWhiteSpace(searchQuery))
-        {
-            filteredFiles = files.ToList();
-        }
-        else
-        {
-            filteredFiles = files.Where(f => 
-                f.FileName.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-        }
-        StateHasChanged();
+        // Reset to first page when searching
+        pagingParams.PageNumber = 1;
+        await LoadFiles();
     }
 
-    private void SearchFiles()
+    private async Task SearchFiles()
     {
-        ApplySearch();
+        await ApplySearch();
     }
 
-    private void OnSearchKeyPress(KeyboardEventArgs e)
+    private async Task OnSearchKeyPress(KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
         {
-            SearchFiles();
+            await SearchFiles();
+        }
+    }
+
+    private async Task GoToPage(int pageNumber)
+    {
+        if (pageNumber >= 1 && pageNumber <= (currentPagingHeader?.TotalPages ?? 1))
+        {
+            pagingParams.PageNumber = pageNumber;
+            await LoadFiles();
+        }
+    }
+
+    private async Task OnSearchModeChanged()
+    {
+        // When AI search mode changes, refresh search if there's a query
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            await ApplySearch();
         }
     }
 
@@ -265,7 +344,7 @@
                 
                 // For now, just remove from local list
                 files.RemoveAll(f => f.Id == fileId);
-                ApplySearch();
+                await ApplySearch();
                 await ShowToast("File deleted successfully!", "success");
             }
             catch (Exception ex)

@@ -6,7 +6,7 @@ namespace DTO.Models;
 public class DocumentChunk
 {
     [VectorStoreKey]
-    public int Id { get; set; }
+    public Guid Id { get; set; }
     [VectorStoreData]
     public int UploadFileId { get; set; }
     [VectorStoreData]

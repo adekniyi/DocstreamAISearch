@@ -41,6 +41,8 @@ builder.Services.AddKeyedSingleton<IContentDecoder, TextContentDecoder>(MediaTyp
 
 builder.Services.AddKeyedSingleton<ITextChunker, DefaultTextChunker>(KeyedService.AnyKey);
 builder.Services.AddKeyedSingleton<ITextChunker, MarkdownTextChunker>(MediaTypeNames.Text.Markdown);
+builder.Services.AddScoped<VectorManager>();
+builder.Services.AddSingleton<VectorDatabase>();
 builder.Services.AddProblemDetails();
 builder.Services.AddControllers();
 

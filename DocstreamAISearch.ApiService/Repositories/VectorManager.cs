@@ -44,6 +44,7 @@ public class VectorManager(IServiceProvider serviceProvider, Context dbContext
                 var documentChunk = new DocumentChunk
                 {
                     UploadFileId = uploadFileId,
+                    Id = Guid.NewGuid(),
                     Index = index,
                     PageNumber = chunk.PageNumber,
                     IndexOnPage = chunk.IndexOnPage,
@@ -73,14 +74,15 @@ public class VectorManager(IServiceProvider serviceProvider, Context dbContext
     {
         try
         {
-            logger.LogInformation("Performing vector search for query: {SearchQuery}", searchQuery);
+            logger.LogInformation("Performing vector search for query: {SearchQuery} with score threshold: {ScoreThreshold}", 
+                searchQuery, appSettings.VectorSearchScoreThreshold);
 
             await vectorDatabase.InitAsync(collectionName);
 
             var searchEmbedding = await embeddingGenerator.GenerateAsync(searchQuery);
             var searchVector = searchEmbedding.Vector.ToArray();
 
-            var uploadFileIds = await vectorDatabase.SearchAsync(collectionName, searchVector, size);
+            var uploadFileIds = await vectorDatabase.SearchAsync(collectionName, searchVector, size, appSettings.VectorSearchScoreThreshold);
 
             logger.LogInformation("Vector search completed. Found {Count} distinct files for query: {SearchQuery}", 
                 uploadFileIds.Count, searchQuery);

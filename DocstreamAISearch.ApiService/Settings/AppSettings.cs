@@ -21,4 +21,6 @@ public class AppSettings
     public TimeSpan MessageExpiration { get; init; }
 
     public int MessageLimit { get; set; } = 20;
+
+    public float VectorSearchScoreThreshold { get; init; } = 0.5f;
 }

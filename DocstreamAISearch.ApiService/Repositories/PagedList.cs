@@ -1,4 +1,5 @@
 using System;
+using DTO.DTOs;
 
 namespace DocstreamAISearch.ApiService.Repositories;
 
@@ -32,31 +33,7 @@ public class PagedList<T> where T : class
     {
         return new PagingHeader(
                 TotalItems, PageNumber,
-                PageSize, TotalPages, NextPageNumber, PreviousPageNumber, List);
+                PageSize, TotalPages, NextPageNumber, PreviousPageNumber);
     }
      
-}
-
-
-public class PagingHeader
-{
-    public PagingHeader(
-        int totalItems, int pageNumber, int pageSize, int totalPages, int nextPage, int previousPage, dynamic result)
-    {
-        TotalItems = totalItems;
-        PageNumber = pageNumber;
-        PageSize = pageSize;
-        TotalPages = totalPages;
-        NextPage = nextPage;
-        PreviousPage = previousPage;
-        Result = result;
-    }
-
-    public int TotalItems { get; }
-    public int PageNumber { get; }
-    public int PageSize { get; }
-    public int TotalPages { get; }
-    public int NextPage { get; }
-    public int PreviousPage { get; }
-    public dynamic Result { get; set; }
 }

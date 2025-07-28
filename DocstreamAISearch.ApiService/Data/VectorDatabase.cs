@@ -19,7 +19,8 @@ public class VectorDatabase
         var collectionExists = await _qdrant.CollectionExistsAsync(collectionName);
         if (collectionExists)
         {
-            return; 
+            // await DeleteCollectionAsync(collectionName);
+            return;
         }
 
         await CreateCollectionAsync(collectionName);
@@ -52,21 +53,27 @@ public class VectorDatabase
         // Create collection
         await _qdrant.CreateCollectionAsync(collectionName, new VectorParams
         {
-            Size = 384, // Size of the vector
+            Size = 768, // Size of the vector (nomic-embed-text produces 768-dimensional vectors)
             Distance = Distance.Cosine // Use cosine distance for similarity
         });
     }
     
-    public async Task<List<int>> SearchAsync(string collectionName, float[] searchVector, int size = 10)
+    public async Task<List<int>> SearchAsync(string collectionName, float[] searchVector, int size = 10, float scoreThreshold = 0.5f)
     {
         try
         {
-            // Perform vector search
-            var searchResult = await _qdrant.SearchAsync(collectionName, searchVector, limit: (ulong)size);
+            // Perform vector search with score threshold
+            var searchResult = await _qdrant.SearchAsync(
+                collectionName, 
+                searchVector, 
+                limit: (ulong)size,
+                scoreThreshold: scoreThreshold
+            );
             
             // Extract UploadFileIds from payload and get distinct values
+            // Only include results that meet the score threshold
             var uploadFileIds = searchResult
-                .Where(point => point.Payload.ContainsKey("uploadFileId"))
+                .Where(point => point.Score >= scoreThreshold && point.Payload.ContainsKey("uploadFileId"))
                 .Select(point => Convert.ToInt32(point.Payload["uploadFileId"].IntegerValue))
                 .Distinct()
                 .ToList();
@@ -77,6 +84,22 @@ public class VectorDatabase
         {
             // Log the error (you might want to inject ILogger)
             throw new Exception($"Error performing vector search: {ex.Message}", ex);
+        }
+    }
+
+    public async Task DeleteCollectionAsync(string collectionName)
+    {
+        try
+        {
+            var collectionExists = await _qdrant.CollectionExistsAsync(collectionName);
+            if (collectionExists)
+            {
+                await _qdrant.DeleteCollectionAsync(collectionName);
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"Error deleting collection '{collectionName}': {ex.Message}", ex);
         }
     }
 

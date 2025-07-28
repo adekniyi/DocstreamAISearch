@@ -8,5 +8,5 @@ public interface IUploadService
     Task<bool> UploadFileAsync(UploadRequestDTO request);
     Task DeleteFileAsync(int fileId);
     Task<UploadResponseDTO?> GetFileDetailsAsync(int fileId);
-    Task<SearchResponse?> ListUploadedFilesAsync();
+    Task<PagingHeader?> ListUploadedFilesAsync(PagingParams? pagingParams = null);
 }

@@ -67,7 +67,7 @@ public class UploadService : IUploadService
         {
             _logger.LogInformation("Getting file details for file ID: {FileId}", fileId);
 
-            var response = await _httpClient.GetAsync($"/api/file/file/{fileId}");
+            var response = await _httpClient.GetAsync($"/api/file/{fileId}");
             
             if (response.IsSuccessStatusCode)
             {
@@ -99,24 +99,42 @@ public class UploadService : IUploadService
         }
     }
 
-    public async Task<SearchResponse?> ListUploadedFilesAsync()
+    public async Task<PagingHeader?> ListUploadedFilesAsync(PagingParams? pagingParams = null)
     {
         try
         {
-            _logger.LogInformation("Getting list of uploaded files");
+            _logger.LogInformation("Getting list of uploaded files with pagination");
 
-            var response = await _httpClient.GetAsync("/api/file/list");
+            // Set default pagination if not provided
+            pagingParams ??= new PagingParams();
+
+            // Build query parameters
+            var queryParams = new List<string>();
+            
+            if (!string.IsNullOrEmpty(pagingParams.SearchParams))
+                queryParams.Add($"searchParams={Uri.EscapeDataString(pagingParams.SearchParams)}");
+            
+            queryParams.Add($"pageNumber={pagingParams.PageNumber}");
+            queryParams.Add($"pageSize={pagingParams.PageSize}");
+            queryParams.Add($"searchByIA={pagingParams.SearchByIA.ToString().ToLower()}");
+
+            var queryString = queryParams.Count > 0 ? "?" + string.Join("&", queryParams) : "";
+            var endpoint = $"/api/file/list{queryString}";
+
+            var response = await _httpClient.GetAsync(endpoint);
             
             if (response.IsSuccessStatusCode)
             {
                 var jsonContent = await response.Content.ReadAsStringAsync();
-                var filesList = System.Text.Json.JsonSerializer.Deserialize<SearchResponse>(jsonContent, new System.Text.Json.JsonSerializerOptions
+                var pagingResult = System.Text.Json.JsonSerializer.Deserialize<PagingHeader>(jsonContent, new System.Text.Json.JsonSerializerOptions
                 {
                     PropertyNameCaseInsensitive = true
                 });
 
-                _logger.LogInformation("Files list retrieved successfully. Count: {FileCount}", filesList?.UploadedFiles?.Count ?? 0);
-                return filesList;
+                // _logger.LogInformation("Files list retrieved successfully. Count: {FileCount}, Page: {PageNumber}/{TotalPages}", 
+                //     pagingResult?.Result?.Count ?? 0, pagingParams.PageNumber, pagingResult?.TotalPages ?? 0);
+                
+                return pagingResult;
             }
             else
             {

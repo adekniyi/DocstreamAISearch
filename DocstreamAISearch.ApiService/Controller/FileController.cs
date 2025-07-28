@@ -38,9 +38,9 @@ namespace DocstreamAISearch.ApiService.Controller
         }
 
         [HttpGet("list")]
-        public async Task<IActionResult> ListUploadedFiles()
+        public async Task<IActionResult> ListUploadedFiles([FromQuery]PagingParams pagingParams)
         {
-            var files = await _fileManager.ListUploadedFilesAsync();
+            var files = await _fileManager.ListUploadedFilesAsync(pagingParams);
             return Ok(files);
         }
     }
