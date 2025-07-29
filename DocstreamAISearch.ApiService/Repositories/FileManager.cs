@@ -110,6 +110,9 @@ public class FileManager : IFileManager
 
         var filePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", file.FileName);
         
+        // Log the file path for debugging
+        Console.WriteLine($"Saving file to: {filePath}");
+        
         // Save the file first
         using (var writeStream = new FileStream(filePath, FileMode.Create))
         {

@@ -9,4 +9,5 @@ public interface IUploadService
     Task DeleteFileAsync(int fileId);
     Task<UploadResponseDTO?> GetFileDetailsAsync(int fileId);
     Task<PagingHeader?> ListUploadedFilesAsync(PagingParams? pagingParams = null);
+    string GetFileViewUrl(int fileId);
 }

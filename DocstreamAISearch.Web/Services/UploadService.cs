@@ -27,7 +27,10 @@ public class UploadService : IUploadService
             // Add the file content
             using var fileStream = request.File.OpenReadStream();
             var fileContent = new StreamContent(fileStream);
-            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(request.File.ContentType ?? "application/octet-stream");
+            
+            // Determine content type based on file extension if not provided or generic
+            var contentType = GetContentTypeFromFileName(request.File.FileName, request.File.ContentType);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
             content.Add(fileContent, "file", request.File.FileName);
             
             // Add additional form data if needed
@@ -148,6 +151,43 @@ public class UploadService : IUploadService
             _logger.LogError(ex, "Exception occurred while getting files list");
             return null;
         }
+    }
+
+    public string GetFileViewUrl(int fileId)
+    {
+        // Use the same base URL as the HttpClient which is configured in Program.cs
+        var baseUrl = "https://localhost:7544";
+        return $"{baseUrl}/api/file/view/{fileId}";
+    }
+
+    private static string GetContentTypeFromFileName(string fileName, string? providedContentType)
+    {
+        // If we have a valid provided content type and it's not generic, use it
+        if (!string.IsNullOrEmpty(providedContentType) && 
+            providedContentType != "application/octet-stream" && 
+            providedContentType != "text/plain")
+        {
+            return providedContentType;
+        }
+
+        // Determine content type from file extension
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".md" or ".markdown" => "text/markdown",
+            ".txt" => "text/plain",
+            ".pdf" => "application/pdf",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".bmp" => "image/bmp",
+            ".svg" => "image/svg+xml",
+            _ => providedContentType ?? "application/octet-stream"
+        };
     }
 }
 

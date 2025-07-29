@@ -11,6 +11,18 @@ var builder = WebApplication.CreateBuilder(args);
 // Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
 
+// Add CORS for the Web app
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowWebApp", policy =>
+    {
+        policy.WithOrigins("https://localhost:7443", "http://localhost:5000", "https+http://webfrontend")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 builder.AddSqlServerDbContext<Context>("sqldb");
 // Add services to the container.
 
@@ -46,6 +58,17 @@ builder.Services.AddSingleton<VectorDatabase>();
 builder.Services.AddProblemDetails();
 builder.Services.AddControllers();
 
+// Add CORS configuration
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowWebApp", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
@@ -54,6 +77,9 @@ var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 app.UseExceptionHandler();
+
+// Enable CORS
+app.UseCors("AllowWebApp");
 
 if (app.Environment.IsDevelopment())
 {

@@ -3,6 +3,7 @@
 @using DTO.DTOs
 @inject IUploadService UploadService
 @inject IJSRuntime JSRuntime
+@inject HttpClient HttpClient
 @rendermode InteractiveServer
 
 <PageTitle>File Manager</PageTitle>
@@ -40,7 +41,7 @@
     </div>
 
     <!-- Hidden File Input -->
-    <InputFile @ref="fileInput" OnChange="OnFileSelected" style="display: none;" accept=".pdf,.doc,.docx,.txt,.xlsx,.xls" id="fileUploadInput" />
+    <InputFile @ref="fileInput" OnChange="OnFileSelected" style="display: none;" accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.md" id="fileUploadInput" />
 
     <!-- Loading State -->
     @if (isLoading)
@@ -80,12 +81,15 @@
                                             <tr>
                                                 <td class="ps-4">
                                                     <input type="checkbox" class="form-check-input" @onchange="(e) => ToggleFileSelection(file.Id, e)">
-                                                </td>                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <i class="@GetFileIcon(file.FileName) me-2 text-muted"></i>
-                                        <span>@file.FileName</span>
-                                    </div>
-                                </td>
+                                                </td>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <i class="@GetFileIcon(file.FileName) me-2 text-muted"></i>
+                                                        <a href="javascript:void(0)" class="text-decoration-none text-primary fw-medium" @onclick="() => ViewFile(file)" style="cursor: pointer;" title="Click to view document">
+                                                            <span>@file.FileName</span>
+                                                        </a>
+                                                    </div>
+                                                </td>
                                                 <td class="text-muted">
                                                     @file.UploadDate.ToString("MMM dd, yyyy, h:mm tt")
                                                 </td>
@@ -93,9 +97,14 @@
                                                     @FormatFileSize(file.FileSize)
                                                 </td>
                                                 <td>
-                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteFile(file.Id)">
-                                                        Delete
-                                                    </button>
+                                                    <div class="d-flex gap-1">
+                                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewFile(file)" title="View document">
+                                                            <i class="bi bi-eye"></i>
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteFile(file.Id)" title="Delete document">
+                                                            <i class="bi bi-trash"></i>
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         }
@@ -175,6 +184,166 @@
             </div>
         </div>
     }
+
+    <!-- Document Viewer Modal -->
+    @if (showViewer && currentViewingFile != null)
+    {
+        <div class="modal fade show" style="display: block; background-color: rgba(0,0,0,0.5); z-index: 1055;" tabindex="-1">
+            <div class="modal-dialog modal-xl modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="@GetFileIcon(currentViewingFile.FileName) me-2"></i>
+                            @currentViewingFile.FileName
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="CloseViewer"></button>
+                    </div>
+                    <div class="modal-body p-0" style="height: 80vh; overflow: hidden;">
+                        @if (isLoadingFile)
+                        {
+                            <div class="d-flex justify-content-center align-items-center h-100">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading document...</span>
+                                </div>
+                            </div>
+                        }
+                        else if (IsPdfFile(currentViewingFile.FileName))
+                        {
+                            <!-- PDF Viewer -->
+                            <iframe src="@GetFileUrl(currentViewingFile.Id)" 
+                                    style="width: 100%; height: 100%; border: none;"
+                                    title="PDF Viewer">
+                            </iframe>
+                        }
+                        else if (IsImageFile(currentViewingFile.FileName))
+                        {
+                            <!-- Image Viewer -->
+                            <div class="d-flex justify-content-center align-items-center h-100 p-3">
+                                <img src="@GetFileUrl(currentViewingFile.Id)" 
+                                     class="img-fluid" 
+                                     style="max-height: 100%; max-width: 100%;"
+                                     alt="@currentViewingFile.FileName" />
+                            </div>
+                        }
+                        else if (IsTextFile(currentViewingFile.FileName) || IsMarkdownFile(currentViewingFile.FileName))
+                        {
+                            <!-- Text File and Markdown Viewer -->
+                            <div class="p-3 h-100" style="overflow-y: auto;">
+                                @if (!string.IsNullOrEmpty(fileContent))
+                                {
+                                    @if (IsMarkdownFile(currentViewingFile.FileName))
+                                    {
+                                        <!-- Markdown Content with Basic Styling -->
+                                        <div class="markdown-content" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6;">
+                                            @((MarkupString)ConvertMarkdownToHtml(fileContent))
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <!-- Plain Text Content -->
+                                        <pre class="text-wrap" style="white-space: pre-wrap; font-family: 'Courier New', monospace; font-size: 14px;">@fileContent</pre>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="text-center text-muted">
+                                        <p>Unable to load file content</p>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else if (IsOfficeFile(currentViewingFile.FileName))
+                        {
+                            <!-- Office Document Viewer - Use Google Docs Viewer -->
+                            @if (showOfficeOnlineViewer)
+                            {
+                                <div class="position-relative h-100">
+                                    <iframe src="https://docs.google.com/gview?url=@Uri.EscapeDataString(GetFileUrl(currentViewingFile.Id))&embedded=true" 
+                                            style="width: 100%; height: 100%; border: none;"
+                                            title="Office Document Viewer">
+                                    </iframe>
+                                    <div class="position-absolute top-0 end-0 p-2">
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ShowOfficeDownloadOption">
+                                            <i class="bi bi-download"></i> Download instead
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex flex-column justify-content-center align-items-center h-100 text-center">
+                                    <i class="@GetFileIcon(currentViewingFile.FileName) display-1 mb-3"></i>
+                                    <h5>Office Document Preview</h5>
+                                    <p class="text-muted mb-3">Choose how to view this Office document:</p>
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-outline-primary" @onclick="TryOfficeOnlineViewer">
+                                            <i class="bi bi-eye me-2"></i>Preview Online
+                                        </button>
+                                        <a href="@GetFileUrl(currentViewingFile.Id)" 
+                                           class="btn btn-primary" 
+                                           download="@currentViewingFile.FileName"
+                                           title="Download and open document">
+                                            <i class="bi bi-download me-2"></i>Download & Open
+                                        </a>
+                                        <button class="btn btn-secondary" @onclick="CloseViewer">
+                                            Close
+                                        </button>
+                                    </div>
+                                    <small class="text-muted mt-2">
+                                        Note: Online preview may not work for all document formats or if the file is not publicly accessible.
+                                    </small>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <!-- Unsupported File Type -->
+                            <div class="d-flex flex-column justify-content-center align-items-center h-100 text-center">
+                                <i class="@GetFileIcon(currentViewingFile.FileName) display-1 mb-3"></i>
+                                <h5>Preview not available</h5>
+                                <p class="text-muted mb-3">This file type cannot be previewed in the browser.</p>
+                                <div class="d-flex gap-2">
+                                    <a href="@GetFileUrl(currentViewingFile.Id)" 
+                                       class="btn btn-primary" 
+                                       target="_blank">
+                                        <i class="bi bi-download me-2"></i>Download File
+                                    </a>
+                                    <button class="btn btn-secondary" @onclick="CloseViewer">
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <div class="d-flex justify-content-between align-items-center w-100">
+                            <div class="text-muted small">
+                                <span>Size: @FormatFileSize(currentViewingFile.FileSize)</span>
+                                <span class="ms-3">Modified: @currentViewingFile.UploadDate.ToString("MMM dd, yyyy")</span>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a href="@GetFileUrl(currentViewingFile.Id)" 
+                                   class="btn btn-outline-primary btn-sm" 
+                                   target="_blank"
+                                   title="Open in new tab">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
+                                <a href="@GetFileUrl(currentViewingFile.Id)" 
+                                   class="btn btn-outline-secondary btn-sm"
+                                   download="@currentViewingFile.FileName"
+                                   title="Download file">
+                                    <i class="bi bi-download"></i>
+                                </a>
+                                <button type="button" class="btn btn-secondary btn-sm" @onclick="CloseViewer">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
@@ -191,6 +360,13 @@
     // Pagination properties
     private PagingParams pagingParams = new() { PageNumber = 1, PageSize = 10 };
     private PagingHeader? currentPagingHeader;
+
+    // Viewer state
+    private bool showViewer = false;
+    private UploadResponseDTO? currentViewingFile;
+    private bool isLoadingFile = false;
+    private string fileContent = string.Empty;
+    private bool showOfficeOnlineViewer = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -270,6 +446,66 @@
         {
             await ApplySearch();
         }
+    }
+
+    private async Task ViewFile(UploadResponseDTO file)
+    {
+        try
+        {
+            // For the viewer, we just set the currentViewingFile and show the modal
+            currentViewingFile = file;
+            showViewer = true;
+            isLoadingFile = true;
+            fileContent = string.Empty;
+            StateHasChanged();
+            
+            // Load file content for text files and markdown files
+            if (IsTextFile(file.FileName) || IsMarkdownFile(file.FileName))
+            {
+                try
+                {
+                    var fileUrl = GetFileUrl(file.Id);
+                    fileContent = await HttpClient.GetStringAsync(fileUrl);
+                }
+                catch (Exception textEx)
+                {
+                    await ShowToast($"Error loading file content: {textEx.Message}", "error");
+                    Console.WriteLine($"File content loading error: {textEx}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowToast($"Error opening file: {ex.Message}", "error");
+            Console.WriteLine($"File viewing error: {ex}");
+        }
+        finally
+        {
+            isLoadingFile = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseViewer()
+    {
+        showViewer = false;
+        currentViewingFile = null;
+        fileContent = string.Empty;
+        isLoadingFile = false;
+        showOfficeOnlineViewer = false;
+        StateHasChanged();
+    }
+
+    private void TryOfficeOnlineViewer()
+    {
+        showOfficeOnlineViewer = true;
+        StateHasChanged();
+    }
+
+    private void ShowOfficeDownloadOption()
+    {
+        showOfficeOnlineViewer = false;
+        StateHasChanged();
     }
 
     private async Task OpenFileUpload()
@@ -389,6 +625,7 @@
             ".doc" or ".docx" => "bi bi-file-earmark-word text-primary",
             ".xls" or ".xlsx" => "bi bi-file-earmark-excel text-success",
             ".txt" => "bi bi-file-earmark-text text-secondary",
+            ".md" or ".markdown" => "bi bi-file-earmark-code text-info",
             ".ppt" or ".pptx" => "bi bi-file-earmark-ppt text-warning",
             ".zip" or ".rar" => "bi bi-file-earmark-zip text-info",
             ".jpg" or ".jpeg" or ".png" or ".gif" => "bi bi-file-earmark-image text-purple",
@@ -414,5 +651,79 @@
         // This is a placeholder for toast notifications
         // You can implement a proper toast service later
         await JSRuntime.InvokeVoidAsync("alert", message);
+    }
+
+    private bool IsTextFile(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension == ".txt";
+    }
+
+    private bool IsMarkdownFile(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension == ".md" || extension == ".markdown";
+    }
+
+    private string ConvertMarkdownToHtml(string markdown)
+    {
+        if (string.IsNullOrEmpty(markdown))
+            return string.Empty;
+
+        // Basic Markdown to HTML conversion
+        var html = markdown;
+
+        // Headers
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^### (.*$)", "<h3>$1</h3>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^## (.*$)", "<h2>$1</h2>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^# (.*$)", "<h1>$1</h1>", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        // Bold and Italic
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\*\*(.*?)\*\*", "<strong>$1</strong>");
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\*(.*?)\*", "<em>$1</em>");
+
+        // Code blocks
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"```(.*?)```", "<pre style=\"background-color: #f5f5f5; padding: 10px; border-radius: 4px; overflow-x: auto;\"><code>$1</code></pre>", System.Text.RegularExpressions.RegexOptions.Singleline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"`(.*?)`", "<code style=\"background-color: #f5f5f5; padding: 2px 4px; border-radius: 3px;\">$1</code>");
+
+        // Links
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"\[([^\]]+)\]\(([^)]+)\)", "<a href=\"$2\" target=\"_blank\" style=\"color: #007bff; text-decoration: none;\">$1</a>");
+
+        // Lists
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"^- (.*$)", "<li>$1</li>", System.Text.RegularExpressions.RegexOptions.Multiline);
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"(<li>.*</li>)", "<ul style=\"margin: 10px 0; padding-left: 20px;\">$1</ul>", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        // Line breaks
+        html = html.Replace("\n", "<br>");
+
+        // Wrap in a container with basic styling
+        html = $"<div style=\"max-width: 100%; word-wrap: break-word;\">{html}</div>";
+
+        return html;
+    }
+
+    private bool IsPdfFile(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension == ".pdf";
+    }
+
+    private bool IsOfficeFile(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension == ".doc" || extension == ".docx" || extension == ".xls" || extension == ".xlsx" || extension == ".ppt" || extension == ".pptx";
+    }
+
+    private bool IsImageFile(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension == ".jpg" || extension == ".jpeg" || extension == ".png" || extension == ".gif";
+    }
+
+    private string GetFileUrl(int fileId)
+    {
+        var url = UploadService.GetFileViewUrl(fileId);
+        Console.WriteLine($"Generated file URL: {url}");
+        return url;
     }
 }
